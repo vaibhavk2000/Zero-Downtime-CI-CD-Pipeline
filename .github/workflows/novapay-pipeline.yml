@@ -1,71 +1,78 @@
-name: NovaPay 8-Stage Compliance Pipeline
+name: NovaPay Secure CI/CD
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  # STAGE 1: Source Control & Validation Gates
-  stage-1-source-control:
-    runs-on: ubuntu-latest
-    steps:
-      - name: "1. Source Control Validation"
-        run: echo "Executing Stage 1..."
 
-  # STAGE 2: Build & Package Management
-  stage-2-build-package:
-    needs: stage-1-source-control
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: "2. Build and Package Artifacts"
-        run: echo "Executing Stage 2..."
+      - uses: actions/checkout@v4
 
-  # STAGE 3: Static Application Security Testing (SAST)
-  stage-3-sast:
-    needs: stage-2-build-package
-    runs-on: ubuntu-latest
-    steps:
-      - name: "3. Static Application Security Testing"
-        run: echo "Executing Stage 3..."
+      - name: Build Application
+        run: mvn clean package
 
-  # STAGE 4: Software Bill of Materials & Dependency Scanning
-  stage-4-sca-container:
-    needs: stage-3-sast
+  sast:
+    needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: "4. SCA and Container Scanning"
-        run: echo "Executing Stage 4..."
+      - name: SonarQube Scan
+        run: sonar-scanner
 
-  # STAGE 5: Integration & Contract Testing
-  stage-5-integration-contract:
-    needs: stage-4-sca-container
+  dependency-scan:
+    needs: sast
     runs-on: ubuntu-latest
     steps:
-      - name: "5. Integration and Contract Testing"
-        run: echo "Executing Stage 5..."
+      - name: Trivy Dependency Scan
+        run: trivy fs .
 
-  # STAGE 6: Dynamic Application Security Testing (DAST)
-  stage-6-dast:
-    needs: stage-5-integration-contract
+  container-scan:
+    needs: dependency-scan
     runs-on: ubuntu-latest
     steps:
-      - name: "6. Dynamic Application Security Testing"
-        run: echo "Executing Stage 6..."
+      - name: Build Docker Image
+        run: docker build -t novapay:${{ github.sha }} .
 
-  # STAGE 7: Policy & Compliance Enforcement Gates
-  stage-7-compliance-gates:
-    needs: stage-6-dast
-    runs-on: ubuntu-latest
-    steps:
-      - name: "7. Policy and Compliance Gates"
-        run: echo "Executing Stage 7..."
+      - name: Scan Docker Image
+        run: trivy image novapay:${{ github.sha }}
 
-  # STAGE 8: GitOps Continuous Deployment & Verification
-  stage-8-deployment-verification:
-    needs: stage-7-compliance-gates
+  integration-test:
+    needs: container-scan
     runs-on: ubuntu-latest
     steps:
-      - name: "8. Deployment and Verification"
-        run: echo "Executing Stage 8..."
+      - name: Run Integration Tests
+        run: mvn verify
+
+  dast:
+    needs: integration-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: OWASP ZAP Scan
+        run: zap-baseline.py -t https://staging.novapay.com
+
+  compliance:
+    needs: dast
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate SBOM
+        run: syft . -o spdx-json
+
+      - name: OPA Policy Validation
+        run: conftest test kubernetes/
+
+  deploy:
+    needs: compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy through ArgoCD
+        run: argocd app sync novapay-prod
+
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Health Check
+        run: curl https://api.novapay.com/health
