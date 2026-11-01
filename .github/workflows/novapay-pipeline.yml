@@ -1,0 +1,87 @@
+name: NovaPay Secure CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  security-events: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: novapay/core-banking
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Run SAST (Semgrep Security Scan)
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: p/owasp-top-10
+        continue-on-error: false # Breaks the build if high-severity flaws are caught
+
+      - name: Build Immutable Production Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Scan Image Vulnerabilities (Trivy Container Scan)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1' # Enforces compliance gate by breaking build on High/Critical CVEs
+
+      - name: Generate SBOM Compliance Artifact
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          output-file: sbom.spdx.json
+
+  compliance-gate:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout OPA Policies
+        uses: actions/checkout@v4
+        with:
+          repository: novapay/compliance-policies
+          path: policies
+
+      - name: Evaluate OPA Deployment Rego System
+        run: |
+          curl -L -o opa https://openpolicyagent.org
+          chmod +x opa
+          ./opa eval --data policies/rbi_pci_rules.rego --input ${{ github.workspace }}/sbom.spdx.json "data.compliance.deny" | grep -q "[]"
+
+  deploy-gitops:
+    needs: compliance-gate
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout GitOps Configurations
+        uses: actions/checkout@v4
+        with:
+          repository: novapay/gitops-infrastructure
+          token: ${{ secrets.GITOPS_DEPLOY_PAT }}
+
+      - name: Update Target Application Version Manifest
+        run: |
+          cd clusters/production/
+          sed -i 's|image: ghcr.io/novapay/core-banking:.*|image: ghcr.io/novapay/core-banking:${{ github.sha }}|g' deployment.yaml
+          git config --global user.name "NovaPay CI Bot"
+          git config --global user.email "ci-bot@novapay.digital"
+          git commit -am "chore(deploy): promote core-banking to release ${{ github.sha }}"
+          git push origin main
