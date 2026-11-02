@@ -6,73 +6,72 @@ on:
       - main
 
 jobs:
-
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Build Application
-        run: 
+        run: echo "Building the application..." # Replace with actual build command (e.g., npm run build, mvn package)
 
   sast:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: SonarQube Scan
-        run: 
+        run: echo "Running SonarQube Scan..."
 
   dependency-scan:
-    needs: sast
+    needs: build # Runs in parallel with SAST to save time
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Trivy Dependency Scan
-        run: 
+        run: echo "Running Trivy Scan..."
 
   container-scan:
-    needs: dependency-scan
+    needs: [sast, dependency-scan] # Waits for both code scans to finish
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Build Docker Image
-        run: 
-
+        run: echo "Building Docker image..."
       - name: Scan Docker Image
-        run: 
+        run: echo "Scanning Docker image with Trivy..."
 
   integration-test:
     needs: container-scan
     runs-on: ubuntu-latest
     steps:
       - name: Run Integration Tests
-        run: 
+        run: echo "Running integration tests..."
 
   dast:
     needs: integration-test
     runs-on: ubuntu-latest
     steps:
       - name: OWASP ZAP Scan
-        run: 
+        run: echo "Running OWASP ZAP DAST scan..."
 
   compliance:
     needs: dast
     runs-on: ubuntu-latest
     steps:
       - name: Generate SBOM
-        run: 
-
+        run: echo "Generating SBOM..."
       - name: OPA Policy Validation
-        run: 
+        run: echo "Validating Open Policy Agent rules..."
 
   deploy:
     needs: compliance
     runs-on: ubuntu-latest
     steps:
       - name: Deploy through ArgoCD
-        run: 
+        run: echo "Triggering ArgoCD sync..."
 
   verify:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
       - name: Health Check
-        run: 
+        run: echo "Checking deployment health..."
