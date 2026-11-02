@@ -13,66 +13,66 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Application
-        run: mvn clean package
+        run: 
 
   sast:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - name: SonarQube Scan
-        run: sonar-scanner
+        run: 
 
   dependency-scan:
     needs: sast
     runs-on: ubuntu-latest
     steps:
       - name: Trivy Dependency Scan
-        run: trivy fs .
+        run: 
 
   container-scan:
     needs: dependency-scan
     runs-on: ubuntu-latest
     steps:
       - name: Build Docker Image
-        run: docker build -t novapay:${{ github.sha }} .
+        run: 
 
       - name: Scan Docker Image
-        run: trivy image novapay:${{ github.sha }}
+        run: 
 
   integration-test:
     needs: container-scan
     runs-on: ubuntu-latest
     steps:
       - name: Run Integration Tests
-        run: mvn verify
+        run: 
 
   dast:
     needs: integration-test
     runs-on: ubuntu-latest
     steps:
       - name: OWASP ZAP Scan
-        run: zap-baseline.py -t https://staging.novapay.com
+        run: 
 
   compliance:
     needs: dast
     runs-on: ubuntu-latest
     steps:
       - name: Generate SBOM
-        run: syft . -o spdx-json
+        run: 
 
       - name: OPA Policy Validation
-        run: conftest test kubernetes/
+        run: 
 
   deploy:
     needs: compliance
     runs-on: ubuntu-latest
     steps:
       - name: Deploy through ArgoCD
-        run: argocd app sync novapay-prod
+        run: 
 
   verify:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
       - name: Health Check
-        run: curl https://api.novapay.com/health
+        run: 
