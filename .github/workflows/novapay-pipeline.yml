@@ -7,71 +7,98 @@ on:
 
 jobs:
   build:
+    name: 1. Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Build Application
-        run: echo "Building the application..." # Replace with actual build command (e.g., npm run build, mvn package)
+      - name: Source Control Checkout
+        uses: actions/checkout@v4
 
-  sast:
+      - name: Build Application
+        run: |
+          echo "Compiling code, resolving dependencies, and running unit tests..."
+          # Insert your framework build command here (e.g., npm run build / mvn clean package)
+
+  static-analysis:
+    name: 2. SAST
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Source Control Checkout
+        uses: actions/checkout@v4
+
       - name: SonarQube Scan
-        run: echo "Running SonarQube Scan..."
+        run: |
+          echo "Executing Static Application Security Testing..."
 
-  dependency-scan:
-    needs: build # Runs in parallel with SAST to save time
+  software-composition:
+    name: 3. Dependency & Container Scanning
+    needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Source Control Checkout
+        uses: actions/checkout@v4
+
       - name: Trivy Dependency Scan
-        run: echo "Running Trivy Scan..."
+        run: |
+          echo "Scanning open-source library dependencies for vulnerabilities (SCA)..."
 
-  container-scan:
-    needs: [sast, dependency-scan] # Waits for both code scans to finish
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build Docker Image
-        run: echo "Building Docker image..."
-      - name: Scan Docker Image
-        run: echo "Scanning Docker image with Trivy..."
+      - name: Build Temporary Docker Image
+        run: |
+          echo "Building application container container..."
 
-  integration-test:
-    needs: container-scan
+      - name: Trivy Container Image Scan
+        run: |
+          echo "Scanning Docker image layers and base OS for CVEs..."
+
+  testing-stage:
+    name: 4. Integration & Contract Tests
+    needs: [static-analysis, software-composition]
     runs-on: ubuntu-latest
     steps:
       - name: Run Integration Tests
-        run: echo "Running integration tests..."
+        run: |
+          echo "Executing component and integration tests..."
 
-  dast:
-    needs: integration-test
+      - name: Run Contract Tests
+        run: |
+          echo "Verifying API provider/consumer contracts (e.g., Pact)..."
+
+  dynamic-analysis:
+    name: 5. DAST
+    needs: testing-stage
     runs-on: ubuntu-latest
     steps:
       - name: OWASP ZAP Scan
-        run: echo "Running OWASP ZAP DAST scan..."
+        run: |
+          echo "Running Dynamic Application Security Testing against active test environment..."
 
-  compliance:
-    needs: dast
+  governance:
+    name: 6. Policy & Compliance Gates
+    needs: dynamic-analysis
     runs-on: ubuntu-latest
     steps:
       - name: Generate SBOM
-        run: echo "Generating SBOM..."
+        run: |
+          echo "Creating Software Bill of Materials (CycloneDX/SPDX)..."
+
       - name: OPA Policy Validation
-        run: echo "Validating Open Policy Agent rules..."
+        run: |
+          echo "Checking compliance against Open Policy Agent (OPA) guardrails..."
 
-  deploy:
-    needs: compliance
+  deployment:
+    name: 7. Deployment
+    needs: governance
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy through ArgoCD
-        run: echo "Triggering ArgoCD sync..."
+      - name: Deploy via ArgoCD
+        run: |
+          echo "Triggering GitOps synchronization via ArgoCD webhook or CLI..."
 
-  verify:
-    needs: deploy
+  verification:
+    name: 8. Verification
+    needs: deployment
     runs-on: ubuntu-latest
     steps:
-      - name: Health Check
-        run: echo "Checking deployment health..."
+      - name: Post-Deployment Health Check
+        run: |
+          echo "Running synthetic smoke tests and validating live endpoint status codes..."
