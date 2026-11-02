@@ -1,25 +1,104 @@
 name: NovaPay Secure CI/CD
+
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+
 jobs:
-  pipeline:
-    name: NovaPay 8-Stage Secure CI/CD Pipeline
+  build:
+    name: 1. Build
     runs-on: ubuntu-latest
     steps:
-      - name: 1. Source Control
+      - name: Source Control Checkout
         uses: actions/checkout@v4
-      - name: 2. Build
-        run: echo "Compiling code and running unit tests..."
-      - name: 3. SAST
-        run: echo "Executing Static Application Security Testing..."
-      - name: 4. Dependency & Container Scanning
-        run: echo "Scanning application dependencies and Docker image layers..."
-      - name: 5. Integration & Contract Tests
-        run: echo "Verifying API contracts and component integration..."
-      - name: 6. DAST
-        run: echo "Running Dynamic Application Security Testing against active test environment..."
-      - name: 7. Policy & Compliance Gates
-        run: echo "Generating SBOM and validating Open Policy Agent (OPA) rules..."
-      - name: 8. Deployment with Verification
-        run: echo "Triggering GitOps sync via ArgoCD and verifying live service health checks..."
+
+      - name: Build Application
+        run: |
+          echo "Compiling code, resolving dependencies, and running unit tests..."
+          # Insert your framework build command here (e.g., npm run build / mvn clean package)
+
+  static-analysis:
+    name: 2. SAST
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Source Control Checkout
+        uses: actions/checkout@v4
+
+      - name: SonarQube Scan
+        run: |
+          echo "Executing Static Application Security Testing..."
+
+  software-composition:
+    name: 3. Dependency & Container Scanning
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Source Control Checkout
+        uses: actions/checkout@v4
+
+      - name: Trivy Dependency Scan
+        run: |
+          echo "Scanning open-source library dependencies for vulnerabilities (SCA)..."
+
+      - name: Build Temporary Docker Image
+        run: |
+          echo "Building application container container..."
+
+      - name: Trivy Container Image Scan
+        run: |
+          echo "Scanning Docker image layers and base OS for CVEs..."
+
+  testing-stage:
+    name: 4. Integration & Contract Tests
+    needs: [static-analysis, software-composition]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Integration Tests
+        run: |
+          echo "Executing component and integration tests..."
+
+      - name: Run Contract Tests
+        run: |
+          echo "Verifying API provider/consumer contracts (e.g., Pact)..."
+
+  dynamic-analysis:
+    name: 5. DAST
+    needs: testing-stage
+    runs-on: ubuntu-latest
+    steps:
+      - name: OWASP ZAP Scan
+        run: |
+          echo "Running Dynamic Application Security Testing against active test environment..."
+
+  governance:
+    name: 6. Policy & Compliance Gates
+    needs: dynamic-analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate SBOM
+        run: |
+          echo "Creating Software Bill of Materials (CycloneDX/SPDX)..."
+
+      - name: OPA Policy Validation
+        run: |
+          echo "Checking compliance against Open Policy Agent (OPA) guardrails..."
+
+  deployment:
+    name: 7. Deployment
+    needs: governance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via ArgoCD
+        run: |
+          echo "Triggering GitOps synchronization via ArgoCD webhook or CLI..."
+
+  verification:
+    name: 8. Verification
+    needs: deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post-Deployment Health Check
+        run: |
+          echo "Running synthetic smoke tests and validating live endpoint status codes..."
